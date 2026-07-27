@@ -7,7 +7,7 @@
 	up down build restart logs ps \
 	preprod-up preprod-down preprod-build preprod-logs preprod-ps \
 	shell-app shell-streamlit \
-	tag-preprod tag-prod validate-release-tagging sync-release-branch check-github-cli
+	tag-preprod tag-prod deploy-preprod deploy-prod validate-release-tagging sync-release-branch check-github-cli
 
 # Make does not load interactive shell configuration, so also check the
 # standard Homebrew locations used on macOS.
@@ -48,8 +48,10 @@ help:
 	@echo "    preprod-ps       Show preprod container status"
 	@echo ""
 	@echo "  Releases:"
-	@echo "    tag-preprod      Tag current commit for preprod  (e.g. make tag-preprod v=1.2.3)"
-	@echo "    tag-prod         Tag current commit for prod     (e.g. make tag-prod v=1.2.3)"
+	@echo "    tag-preprod      Tag current commit for preprod         (e.g. make tag-preprod v=1.2.3)"
+	@echo "    deploy-preprod   Trigger deploy of tagged version       (e.g. make deploy-preprod ref=v1.2.3-preprod)"
+	@echo "    tag-prod         Tag current commit for prod            (e.g. make tag-prod v=1.2.3)"
+	@echo "    deploy-prod      Trigger deploy of tagged version       (e.g. make deploy-prod ref=v1.2.3)"
 	@echo "    validate-release-tagging Validate tag branch policy for v=<major.minor.patch>"
 	@echo "    sync-release-branch Ensure release branch points to latest tag for v=<major.minor.patch>"
 	@echo ""
@@ -111,8 +113,10 @@ preprod-ps:
 	docker compose -f docker-compose.base.yml -f docker-compose.preprod.yml ps
 
 # ─── Releases ────────────────────────────────────────────
-# Usage: make tag-preprod v=1.2.3  → creates and pushes tag v1.2.3-preprod
-#        make tag-prod v=1.2.3     → creates and pushes tag v1.2.3
+# Usage: make tag-preprod v=1.2.3     → creates and pushes tag v1.2.3-preprod
+#        make deploy-preprod ref=v1.2.3-preprod → triggers deploy to preprod
+#        make tag-prod v=1.2.3        → creates and pushes tag v1.2.3
+#        make deploy-prod ref=v1.2.3  → triggers deploy to prod
 
 tag-preprod:
 	@test -n "$(v)" || (echo "Usage: make tag-preprod v=1.2.3" && exit 1)
@@ -121,8 +125,7 @@ tag-preprod:
 	@$(MAKE) sync-release-branch v=$(v)
 	git tag -f v$(v)-preprod
 	git push origin v$(v)-preprod --force
-	@echo "→ Triggering deploy of v$(v)-preprod to preprod..."
-	"$(GH)" workflow run deploy.yml --ref main -f environment=preprod -f ref=v$(v)-preprod
+	@echo "✓ Tagged v$(v)-preprod"
 
 tag-prod:
 	@test -n "$(v)" || (echo "Usage: make tag-prod v=1.2.3" && exit 1)
@@ -131,8 +134,19 @@ tag-prod:
 	@$(MAKE) sync-release-branch v=$(v)
 	git tag -f v$(v)
 	git push origin v$(v) --force
-	@echo "→ Triggering deploy of v$(v) to production..."
-	"$(GH)" workflow run deploy.yml --ref main -f environment=prod -f ref=v$(v)
+	@echo "✓ Tagged v$(v)"
+
+deploy-preprod:
+	@test -n "$(ref)" || (echo "Usage: make deploy-preprod ref=v1.2.3-preprod" && exit 1)
+	@$(MAKE) check-github-cli
+	@echo "→ Triggering deploy of $(ref) to preprod..."
+	"$(GH)" workflow run deploy.yml --ref main -f environment=preprod -f ref=$(ref)
+
+deploy-prod:
+	@test -n "$(ref)" || (echo "Usage: make deploy-prod ref=v1.2.3" && exit 1)
+	@$(MAKE) check-github-cli
+	@echo "→ Triggering deploy of $(ref) to production..."
+	"$(GH)" workflow run deploy.yml --ref main -f environment=prod -f ref=$(ref)
 
 check-github-cli:
 	@if [ -z "$(GH)" ] || [ ! -x "$(GH)" ]; then \
